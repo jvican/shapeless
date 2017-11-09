@@ -1,12 +1,4 @@
-import com.typesafe.sbt.pgp.PgpKeys.publishSigned
 import org.scalajs.sbtplugin.ScalaJSCrossVersion
-import ReleaseTransformations._
-
-import com.typesafe.tools.mima.plugin.MimaPlugin.mimaDefaultSettings
-
-import com.typesafe.sbt.SbtGit._
-import GitKeys._
-
 import sbtcrossproject.CrossPlugin.autoImport.{CrossType, crossProject}
 import sbtcrossproject.CrossProject
 
@@ -30,9 +22,6 @@ addCommandAlias("runAll", ";examplesJVM/runAll")
 addCommandAlias("releaseAll", ";root;release skip-tests")
 
 lazy val scoverageSettings = Seq(
-  coverageMinimum := 60,
-  coverageFailOnMinimum := false,
-  coverageExcludedFiles := ".*/src/test/.*"
 )
 
 lazy val commonSettings = Seq(
@@ -82,13 +71,11 @@ lazy val commonJsSettings = Seq(
     val g = "https://raw.githubusercontent.com/milessabin/shapeless/" + tagOrHash
     s"-P:scalajs:mapSourceURI:$a->$g/"
   },
-  parallelExecution in Test := false,
-  coverageExcludedPackages := ".*"
+  parallelExecution in Test := false
 )
 
 lazy val commonJvmSettings = Seq(
-  parallelExecution in Test := false,
-  coverageExcludedPackages := "shapeless.examples.*"
+  parallelExecution in Test := false
 )
 
 lazy val coreSettings = commonSettings ++ publishSettings ++
@@ -122,7 +109,6 @@ lazy val core = crossProject(JSPlatform, JVMPlatform, NativePlatform).crossType(
   .settings(moduleName := "shapeless")
   .settings(coreSettings:_*)
   .configureCross(buildInfoSetup)
-  .enablePlugins(SbtOsgi)
   .settings(coreOsgiSettings:_*)
   .settings(
     sourceGenerators in Compile += (sourceManaged in Compile).map(Boilerplate.gen).taskValue
@@ -286,103 +272,24 @@ lazy val noPublishSettings = Seq(
   publishArtifact := false
 )
 
-lazy val mimaSettings = mimaDefaultSettings ++ Seq(
-  mimaPreviousArtifacts := {
-    if(scalaVersion.value == "2.13.0-M2") Set()
-    else {
-      val previousVersion = if(scalaVersion.value == "2.12.3") "2.3.2" else "2.3.0"
-      val previousSJSVersion = "0.6.7"
-      val previousSJSBinaryVersion =
-        ScalaJSCrossVersion.binaryScalaJSVersion(previousSJSVersion)
-      val previousBinaryCrossVersion =
-        CrossVersion.binaryMapped(v => s"sjs${previousSJSBinaryVersion}_$v")
-      val scalaV = scalaVersion.value
-      val scalaBinaryV = scalaBinaryVersion.value
-      val thisProjectID = projectID.value
-      val previousCrossVersion = thisProjectID.crossVersion match {
-        case ScalaJSCrossVersion.binary => previousBinaryCrossVersion
-        case crossVersion               => crossVersion
-      }
-
-      // Filter out e:info.apiURL as it expects 0.6.7-SNAPSHOT, whereas the
-      // artifact we're looking for has 0.6.6 (for example).
-      val prevExtraAttributes =
-        thisProjectID.extraAttributes.filterKeys(_ != "e:info.apiURL")
-      val prevProjectID =
-        (thisProjectID.organization % thisProjectID.name % previousVersion)
-          .cross(previousCrossVersion)
-          .extra(prevExtraAttributes.toSeq: _*)
-
-      Set(CrossVersion(scalaV, scalaBinaryV)(prevProjectID).cross(CrossVersion.Disabled))
-    }
-  },
-
-  mimaBinaryIssueFilters ++= {
-    import com.typesafe.tools.mima.core._
-    import com.typesafe.tools.mima.core.ProblemFilters._
-
-    // Filtering the methods that were added since the checked version
-    // (these only break forward compatibility, not the backward one)
-    Seq(
-      exclude[MissingMethodProblem]("shapeless.:+:.eliminate"),
-      exclude[MissingMethodProblem]("shapeless.CaseClassMacros.shapeless$CaseClassMacros$$$anonfun$15"),
-      exclude[MissingMethodProblem]("shapeless.CaseClassMacros.shapeless$CaseClassMacros$$$anonfun$16"),
-      exclude[MissingMethodProblem]("shapeless.CaseClassMacros.shapeless$CaseClassMacros$$$anonfun$17"),
-      exclude[MissingMethodProblem]("shapeless.UnwrappedInstances.tagUnwrapped"),
-      exclude[MissingMethodProblem]("shapeless.CaseClassMacros.findField"),
-      exclude[MissingMethodProblem]("shapeless.CaseClassMacros.FieldType"),
-      exclude[MissingMethodProblem]("shapeless.SingletonTypeUtils.parseSingletonSymbolType"),
-      exclude[MissingMethodProblem]("shapeless.ops.hlist#IsHCons.cons"),
-      exclude[MissingMethodProblem]("shapeless.ops.coproduct#IsCCons.cons")
-    )
-  }
+lazy val mimaSettings = Seq(
 )
 
 def buildInfoSetup(crossProject: CrossProject): CrossProject = {
-  def transform(project: Project) = project enablePlugins BuildInfoPlugin settings (
-    buildInfoPackage := "shapeless",
-    buildInfoUsePackageAsPath := true,
-    buildInfoKeys := Seq[BuildInfoKey](version, scalaVersion, gitHeadCommit),
-    buildInfoOptions += BuildInfoOption.BuildTime
-  )
+  def transform(project: Project) = project
   crossProject jvmConfigure transform jsConfigure transform nativeConfigure transform
 }
 
-lazy val coreOsgiSettings = osgiSettings ++ Seq(
-  OsgiKeys.bundleSymbolicName := "shapeless",
-  OsgiKeys.exportPackage := Seq("shapeless.*;version=${Bundle-Version}"),
-  OsgiKeys.importPackage := Seq("""!scala.quasiquotes,scala.*;version="$<range;[==,=+);$<@>>""""),
-  OsgiKeys.additionalHeaders := Map("-removeheaders" -> "Include-Resource,Private-Package")
+lazy val coreOsgiSettings = Seq(
 )
 
 lazy val tagName = Def.setting{
-  s"shapeless-${if (releaseUseGlobalVersion.value) (version in ThisBuild).value else version.value}"
+  s"shapeless-${(version in ThisBuild).value}"
 }
 
 val Scala211 = "2.11.11"
 
 lazy val releaseSettings = Seq(
-  releaseCrossBuild := true,
-  releasePublishArtifactsAction := PgpKeys.publishSigned.value,
-  releaseTagName := tagName.value,
-  releaseProcess := Seq[ReleaseStep](
-    checkSnapshotDependencies,
-    inquireVersions,
-    runClean,
-    runTest,
-    releaseStepCommand(s"++${Scala211}"),
-    releaseStepCommand("nativeTest/run"),
-    setReleaseVersion,
-    commitReleaseVersion,
-    tagRelease,
-    publishArtifacts,
-    releaseStepCommand(s"++${Scala211}"),
-    releaseStepCommand("coreNative/publishSigned"),
-    setNextVersion,
-    commitNextVersion,
-    ReleaseStep(action = Command.process("sonatypeReleaseAll", _)),
-    pushChanges
-  )
 )
 
 credentials in ThisBuild ++= (for {
