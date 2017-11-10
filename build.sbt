@@ -16,7 +16,6 @@ addCommandAlias("examples", ";project examplesJVM")
 addCommandAlias("validate", ";root;validateJVM;validateJS")
 addCommandAlias("validateJVM", ";coreJVM/compile;coreJVM/mimaReportBinaryIssues;coreJVM/test;examplesJVM/compile;coreJVM/doc")
 addCommandAlias("validateJS", ";coreJS/compile;coreJS/mimaReportBinaryIssues;coreJS/test;examplesJS/compile;coreJS/doc")
-addCommandAlias("validateNative", ";coreNative/compile;nativeTest/run")
 
 addCommandAlias("runAll", ";examplesJVM/runAll")
 addCommandAlias("releaseAll", ";root;release skip-tests")
@@ -95,7 +94,6 @@ lazy val CrossTypeMixed: sbtcrossproject.CrossType = new sbtcrossproject.CrossTy
     val dir = projectType match {
       case JVMPlatform => "jvm"
       case JSPlatform => "js"
-      case NativePlatform => "native"
     }
     crossBase / dir
   }
@@ -104,7 +102,7 @@ lazy val CrossTypeMixed: sbtcrossproject.CrossType = new sbtcrossproject.CrossTy
     Some(projectBase.getParentFile / "src" / conf / "scala")
 }
 
-lazy val core = crossProject(JSPlatform, JVMPlatform, NativePlatform).crossType(CrossTypeMixed)
+lazy val core = crossProject(JSPlatform, JVMPlatform).crossType(CrossTypeMixed)
   .configureCross(configureJUnit)
   .settings(moduleName := "shapeless")
   .settings(coreSettings:_*)
@@ -116,20 +114,11 @@ lazy val core = crossProject(JSPlatform, JVMPlatform, NativePlatform).crossType(
   .settings(mimaSettings:_*)
   .jsSettings(commonJsSettings:_*)
   .jvmSettings(commonJvmSettings:_*)
-  .nativeSettings(
-    // disable scaladoc generation on native
-    // currently getting errors like
-    //   [error] bnd: Invalid syntax for version: ${@}, for cmd: range, arguments; [range, [==,=+), ${@}]
-    publishArtifact in (Compile, packageDoc) := false,
-    publishArtifact in packageDoc := false,
-    sources in (Compile,doc) := Seq.empty
-  )
 
 lazy val coreJVM = core.jvm
 lazy val coreJS = core.js
-lazy val coreNative = core.native
 
-lazy val scratch = crossProject(JSPlatform, JVMPlatform, NativePlatform).crossType(CrossType.Pure)
+lazy val scratch = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
   .configureCross(configureJUnit)
   .dependsOn(core)
   .settings(moduleName := "scratch")
@@ -140,7 +129,6 @@ lazy val scratch = crossProject(JSPlatform, JVMPlatform, NativePlatform).crossTy
 
 lazy val scratchJVM = scratch.jvm
 lazy val scratchJS = scratch.js
-lazy val scratchNative = scratch.native
 
 lazy val runAll = TaskKey[Unit]("runAll")
 
@@ -154,7 +142,7 @@ def runAllIn(config: Configuration): Setting[Task[Unit]] = {
   }
 }
 
-lazy val examples = crossProject(JSPlatform, JVMPlatform, NativePlatform).crossType(CrossType.Pure)
+lazy val examples = crossProject(JSPlatform, JVMPlatform).crossType(CrossType.Pure)
   .configureCross(configureJUnit)
   .dependsOn(core)
   .settings(moduleName := "examples")
@@ -172,44 +160,9 @@ lazy val examples = crossProject(JSPlatform, JVMPlatform, NativePlatform).crossT
   .settings(noPublishSettings:_*)
   .jsSettings(commonJsSettings:_*)
   .jvmSettings(commonJvmSettings:_*)
-  .nativeSettings(
-    sources in Compile ~= {
-      _.filterNot(_.getName == "sexp.scala")
-    }
-  )
 
 lazy val examplesJVM = examples.jvm
 lazy val examplesJS = examples.js
-lazy val examplesNative = examples.native
-
-lazy val nativeTest = project
-  .enablePlugins(ScalaNativePlugin)
-  .settings(
-    noPublishSettings,
-    sourceGenerators in Compile += Def.task {
-      val exclude = List(
-        "StagedTypeClassExample", // scala-reflect
-        "CombinatorTesting", // scala-parser-combinators
-        "ALaCacheDemo" // java.util.WeakHashMap, java.util.logging.Logger
-      )
-      val classNames = (discoveredMainClasses in Compile in examplesNative).value.filterNot{
-        c => exclude.exists(c.contains)
-      }.sorted
-      val src = s"""package shapeless
-      |
-      |object NativeMain {
-      |  def main(args: Array[String]): Unit = {
-      |${classNames.map("    " + _ + ".main(args)").mkString("\n")}
-      |  }
-      |}
-      |""".stripMargin
-      val f = (sourceManaged in Compile).value / "shapeless" / "NativeMain.scala"
-      IO.write(f, src)
-      f :: Nil
-    }.taskValue
-  ).dependsOn(
-    examplesNative
-  )
 
 lazy val scalaMacroDependencies: Seq[Setting[_]] = Seq(
   libraryDependencies ++= Seq(
@@ -277,7 +230,7 @@ lazy val mimaSettings = Seq(
 
 def buildInfoSetup(crossProject: CrossProject): CrossProject = {
   def transform(project: Project) = project
-  crossProject jvmConfigure transform jsConfigure transform nativeConfigure transform
+  crossProject jvmConfigure transform jsConfigure transform
 }
 
 lazy val coreOsgiSettings = Seq(
