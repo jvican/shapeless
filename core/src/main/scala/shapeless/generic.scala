@@ -202,7 +202,23 @@ trait LabelledGeneric[T] extends Serializable {
   def from(r : Repr) : T
 }
 
-object LabelledGeneric {
+trait CoproductLabelledGeneric {
+  /** Handles the Coproduct case (specifying subclasses derive from a sealed trait) */
+  implicit def materializeCoproduct[T, K <: HList, V <: Coproduct, R <: Coproduct]
+    (implicit
+      lab: DefaultSymbolicLabelling.Aux[T, K],
+      gen: Generic.Aux[T, V],
+      zip: coproduct.ZipWithKeys.Aux[K, V, R],
+      ev: R <:< V
+    ): LabelledGeneric.Aux[T, R] =
+    new LabelledGeneric[T] {
+      type Repr = R
+      def to(t: T): Repr = zip(gen.to(t))
+      def from(r: Repr): T = gen.from(r)
+    }
+}
+
+object LabelledGeneric extends CoproductLabelledGeneric {
 
   /** Like [[shapeless.Generic.Aux]], this is an implementation of the Aux pattern, please
     * see comments there.
@@ -221,20 +237,6 @@ object LabelledGeneric {
       lab: DefaultSymbolicLabelling.Aux[T, K],
       gen: Generic.Aux[T, V],
       zip: hlist.ZipWithKeys.Aux[K, V, R],
-      ev: R <:< V
-    ): Aux[T, R] =
-    new LabelledGeneric[T] {
-      type Repr = R
-      def to(t: T): Repr = zip(gen.to(t))
-      def from(r: Repr): T = gen.from(r)
-    }
-
-  /** Handles the Coproduct case (specifying subclasses derive from a sealed trait) */
-  implicit def materializeCoproduct[T, K <: HList, V <: Coproduct, R <: Coproduct]
-    (implicit
-      lab: DefaultSymbolicLabelling.Aux[T, K],
-      gen: Generic.Aux[T, V],
-      zip: coproduct.ZipWithKeys.Aux[K, V, R],
       ev: R <:< V
     ): Aux[T, R] =
     new LabelledGeneric[T] {
